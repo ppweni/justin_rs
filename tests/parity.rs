@@ -1,5 +1,6 @@
 //! Parity with the Python source: the fixtures (`scripts/make_rust_fixtures.py` in the Python
-//! repository) hold inputs and the Python model's outputs on CPU float32; these tests run the same inputs through the Rust port.
+//! repository) hold inputs and the Python model's outputs on CPU float32; these tests run the same
+//! inputs through the Rust port.
 //! Every test prints its worst difference. Missing fixtures skip a test with a message.
 
 use std::collections::HashMap;
