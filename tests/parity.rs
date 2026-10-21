@@ -1,5 +1,5 @@
-//! Parity with the Python source: the fixtures (`scripts/make_fixtures.py`) hold inputs and the
-//! Python model's outputs on CPU float32; these tests run the same inputs through the Rust port.
+//! Parity with the Python source: the fixtures (`scripts/make_rust_fixtures.py` in the Python
+//! repository) hold inputs and the Python model's outputs on CPU float32; these tests run the same inputs through the Rust port.
 //! Every test prints its worst difference. Missing fixtures skip a test with a message.
 
 use std::collections::HashMap;
@@ -23,7 +23,7 @@ fn fixtures() -> Option<PathBuf> {
         Some(path)
     } else {
         eprintln!(
-            "skipped: no fixtures, run `uv run --project ../justin python scripts/make_fixtures.py`"
+            "skipped: no fixtures, run `uv run python scripts/make_rust_fixtures.py` in ../justin"
         );
         None
     }

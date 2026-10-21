@@ -1,5 +1,6 @@
 //! Loading from the Hub cache and from local directories, and the errors a wrong pairing or
-//! missing input gives. Needs the fixtures (`scripts/make_fixtures.py`) and the cached backbones.
+//! missing input gives. Needs the fixtures (`scripts/make_rust_fixtures.py` in the Python
+//! repository) and the cached backbones.
 
 use std::path::{Path, PathBuf};
 

@@ -2,7 +2,8 @@
 
 Justin on [candle](https://github.com/huggingface/candle): a multichannel time series and a list of
 queries in, answers out. A port of the Python package `justin` (expected next to this directory as
-`../justin`), checked against it by parity tests.
+`../justin`), checked against it by parity tests (the fixture script lives in the Python repository,
+`scripts/make_rust_fixtures.py`).
 
 - **Series encoder:** Timestral (5M, 28M, 123M or 209M), with question conditioning (FiLM) and
   LoRA adapters (merged into the weights at load time).
@@ -75,8 +76,8 @@ cd ../justin
 uv run python -m justin export runs/sweep-lora/prod-film-minilmfrozen.pt runs/export/justin-timestral5m-minilm-prod.safetensors
 uv run python -m justin export-location runs/sweep-lora/prod-location-attn.pt \
     runs/export/justin-timestral5m-minilm-prod.safetensors runs/export/justin-timestral5m-minilm-prod-location.safetensors
+uv run python scripts/make_rust_fixtures.py   # Python outputs on CPU float32 -> ../justin_rs/tests/fixtures/
 cd ../justin_rs
-uv run --project ../justin python scripts/make_fixtures.py   # Python outputs on CPU float32 -> tests/fixtures/
 cargo test --release -- --nocapture
 ```
 
