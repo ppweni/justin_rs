@@ -41,6 +41,6 @@ pub mod weights;
 
 pub use crate::error::{Error, Result};
 pub use crate::features::Baseline;
-pub use crate::justin::{Answers, Input, Justin, LoadOptions, Output, Query};
+pub use crate::justin::{Answers, Input, Justin, LOCATION_CANDIDATES, LoadOptions, Output, Query};
 pub use crate::location::Location;
 pub use crate::source::{Backbones, Source};

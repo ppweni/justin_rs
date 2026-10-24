@@ -102,6 +102,9 @@ pub struct Input {
     pub queries: Vec<Query>,
 }
 
+/// How many locations [`Output::Location::candidates`] lists at most.
+pub const LOCATION_CANDIDATES: usize = 5;
+
 /// The answer to one query; probabilities use the calibration temperature of the head.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Output {
@@ -125,6 +128,9 @@ pub enum Output {
         logits: Vec<f32>,
         null_probability: f32,
         location: Option<Location>,
+        /// The most probable locations, best first, at most [`LOCATION_CANDIDATES`]; the null
+        /// class is left out.
+        candidates: Vec<Location>,
     },
 }
 
@@ -598,22 +604,27 @@ impl Justin {
             ));
         }
         let pad = patches * patch - kept;
-        let best = argmax(&probabilities);
-        let location = (best < channels * patches).then(|| {
-            let (channel, index) = (best / patches, best % patches);
+        let decode = |i: usize| {
+            let (channel, index) = (i / patches, i % patches);
             Location {
                 channel,
                 name: names.map(|n| n[channel].clone()),
                 patch: index,
                 start: offset + (index * patch).saturating_sub(pad),
                 end: offset + ((index + 1) * patch - pad).min(kept),
-                probability: probabilities[best],
+                probability: probabilities[i],
             }
-        });
+        };
+        let best = argmax(&probabilities);
+        let location = (best < channels * patches).then(|| decode(best));
+        let mut order: Vec<usize> = (0..channels * patches).collect();
+        order.sort_by(|&a, &b| probabilities[b].total_cmp(&probabilities[a]));
+        let candidates = order.into_iter().take(LOCATION_CANDIDATES).map(decode).collect();
         Ok(Output::Location {
             null_probability: *probabilities.last().expect("null class"),
             logits,
             location,
+            candidates,
         })
     }
 

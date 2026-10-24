@@ -120,6 +120,12 @@ fn a_model_loads_from_the_hub_cache_and_from_local_backbones_alike() {
         matches!(&a[1], Output::Choice { probabilities, answer: Some(_), .. } if (probabilities.iter().sum::<f32>() - 1.0).abs() < 1e-5)
     );
     assert!(matches!(&a[2], Output::Location { logits, .. } if logits.len() == 2 * 10 + 1));
+    let Output::Location { location, candidates, .. } = &a[2] else { unreachable!() };
+    assert_eq!(candidates.len(), justin::LOCATION_CANDIDATES);
+    assert!(candidates.windows(2).all(|w| w[0].probability >= w[1].probability));
+    if let Some(location) = location {
+        assert_eq!(location, &candidates[0]);
+    }
 }
 
 #[test]

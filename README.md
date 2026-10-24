@@ -40,7 +40,8 @@ let outputs = model.forward(&Input {
     ..Default::default()
 })?;
 // One Output per query: Choice { probabilities, answer, .. }, YesNo { probability, answer, .. },
-// Score { .. } or Location { location: Option<Location { channel, patch, start, end, .. }>, .. }.
+// Score { .. } or Location { location: Option<Location { channel, patch, start, end, .. }>,
+// candidates: the top 5 locations, best first, .. }.
 ```
 
 A `Query` is either a question with its possible answers (`Answers::Options`, `YesNo`, `Score`, or
