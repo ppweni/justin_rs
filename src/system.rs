@@ -20,6 +20,8 @@ pub struct ModelConfig {
     #[serde(default)]
     pub option_attention: bool,
     #[serde(default)]
+    pub noul_attention: bool,
+    #[serde(default)]
     pub signal_skip: bool,
     #[serde(default)]
     pub channel_names: bool,
@@ -160,7 +162,7 @@ impl OptionAttention {
         })
     }
 
-    /// z [B, d], keys [N, d], signal [B, M, d_s], valid [B, M] -> [B, N].
+    /// z [B, d], keys [N, d] or [B, N, d] (per sample), signal [B, M, d_s], valid [B, M] -> [B, N].
     fn forward(
         &self,
         z: &Tensor,
@@ -168,13 +170,60 @@ impl OptionAttention {
         signal: &Tensor,
         valid: &Tensor,
     ) -> Result<Tensor> {
-        let queries = z.unsqueeze(1)?.broadcast_add(&keys.unsqueeze(0)?)?;
+        let keys = if keys.rank() == 3 {
+            keys.clone()
+        } else {
+            keys.unsqueeze(0)?
+        };
+        let queries = z.unsqueeze(1)?.broadcast_add(&keys)?;
         let kv = self.kv.forward(signal)?;
         let routed = self.attention.forward(&queries, &kv, &kv, Some(valid))?;
         Ok(self
             .scorer
             .forward(&self.norm.forward(&(queries + routed)?)?)?
             .squeeze(D::Minus1)?)
+    }
+}
+
+/// Yes/no as a choice between two options (`noul_keys`, `noul_question`, `noul_attention`): each
+/// option is a learned key plus the projected question embedding and reads the signal itself.
+struct NoulAttention {
+    keys: Tensor,
+    question: Linear,
+    attention: OptionAttention,
+}
+
+impl NoulAttention {
+    fn load(weights: &Weights) -> Result<Self> {
+        Ok(Self {
+            keys: weights.get("noul_keys")?,
+            question: Linear::load(weights, "noul_question", true)?,
+            attention: OptionAttention::load(weights, "noul_attention")?,
+        })
+    }
+
+    /// The yes-minus-no evidence [B] added to the linear yes/no logit.
+    fn forward(
+        &self,
+        fused: &Tensor,
+        question: &Tensor,
+        question_valid: &Tensor,
+        signal: &Tensor,
+        signal_valid: &Tensor,
+    ) -> Result<Tensor> {
+        let pooled = masked_mean(question, question_valid, 1)?;
+        let norm = pooled
+            .sqr()?
+            .sum_keepdim(D::Minus1)?
+            .sqrt()?
+            .clamp(1e-12, f64::MAX)?;
+        let projected = self.question.forward(&pooled.broadcast_div(&norm)?)?;
+        let keys = self
+            .keys
+            .unsqueeze(0)?
+            .broadcast_add(&projected.unsqueeze(1)?)?;
+        let evidence = self.attention.forward(fused, &keys, signal, signal_valid)?;
+        Ok((evidence.narrow(1, 0, 1)? - evidence.narrow(1, 1, 1)?)?.squeeze(1)?)
     }
 }
 
@@ -298,6 +347,7 @@ pub struct System {
     option_attention: Option<OptionAttention>,
     classes: Option<Tensor>,
     noul: Linear,
+    noul_attention: Option<NoulAttention>,
     score: Linear,
 }
 
@@ -356,6 +406,11 @@ impl System {
                 None => None,
             },
             noul: Linear::load(weights, "noul", true)?,
+            noul_attention: if config.noul_attention {
+                Some(NoulAttention::load(weights)?)
+            } else {
+                None
+            },
             score: Linear::load(weights, "score", true)?,
             config,
         })
@@ -467,7 +522,20 @@ impl System {
             fused = (fused + referents.question.forward(question_features)?)?;
         }
         match head {
-            Head::YesNo => Ok(self.noul.forward(&fused)?.squeeze(D::Minus1)?),
+            Head::YesNo => {
+                let logit = self.noul.forward(&fused)?.squeeze(D::Minus1)?;
+                match &self.noul_attention {
+                    Some(attention) => Ok((logit
+                        + attention.forward(
+                            &fused,
+                            question,
+                            question_valid,
+                            &signal,
+                            signal_valid,
+                        )?)?),
+                    None => Ok(logit),
+                }
+            }
             Head::Score => self.score.forward(&fused),
             Head::Choice(options) => {
                 let keys = match (options, &self.classes) {
