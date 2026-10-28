@@ -9,6 +9,7 @@ use serde::Deserialize;
 
 use crate::error::{Result, format_error, input_error};
 use crate::features::{self, Baseline, FEATURE_VERSION};
+use crate::kinds::kind_pattern;
 use crate::location::{Location, LocationModel, LocationSpec};
 use crate::nn::{merge_lora, sigmoid, softmax};
 use crate::source::{Backbones, Source, hub_file};
@@ -507,12 +508,26 @@ impl Justin {
                 }
             }
         }
+        let mut kinds = None;
+        if let (Some(summary), Some(names), Some(prepared)) =
+            (&system.kind_summary, names, &prepared)
+        {
+            let patterns: Vec<String> = names.iter().map(|n| kind_pattern(n)).collect();
+            let quoted = features::quoted_channels(&question, names);
+            kinds = Some(summary.forward(
+                &self.channel_embeddings(&patterns)?,
+                &prepared.channel_features,
+                &quoted,
+                device,
+            )?);
+        }
         let extras = Extras {
             channel_embeddings: channel_embeddings.as_ref(),
             channel_features: channel_features.as_ref(),
             referents: referent_question
                 .as_ref()
                 .map(|q| (q, referent_options.as_ref())),
+            kinds: kinds.as_ref(),
         };
         let option_embeddings = if options.is_empty() {
             None
@@ -583,6 +598,7 @@ impl Justin {
                     channel_embeddings: Some(&embeddings),
                     channel_features: None,
                     referents: None,
+                    kinds: None,
                 };
                 self.add_names(&signal, &extras)?
             }
@@ -619,7 +635,11 @@ impl Justin {
         let location = (best < channels * patches).then(|| decode(best));
         let mut order: Vec<usize> = (0..channels * patches).collect();
         order.sort_by(|&a, &b| probabilities[b].total_cmp(&probabilities[a]));
-        let candidates = order.into_iter().take(LOCATION_CANDIDATES).map(decode).collect();
+        let candidates = order
+            .into_iter()
+            .take(LOCATION_CANDIDATES)
+            .map(decode)
+            .collect();
         Ok(Output::Location {
             null_probability: *probabilities.last().expect("null class"),
             logits,

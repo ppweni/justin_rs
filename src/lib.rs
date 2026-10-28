@@ -31,6 +31,7 @@
 pub mod error;
 pub mod features;
 pub mod justin;
+pub mod kinds;
 pub mod location;
 pub mod nn;
 pub mod source;

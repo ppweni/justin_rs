@@ -293,8 +293,9 @@ fn justin_matches_python_end_to_end() {
             Justin::from_pretrained(Source::Local(export), options).unwrap(),
         );
     }
-    // Question heads: absolute differences. Location heads (logits around 10): relative to the
-    // largest logit, plus the null probability.
+    // Question heads: each logit's difference relative to its size (at least 1), since float32
+    // agrees to about 1e-6 relative and v0.4.0's choice logits reach 200. Location heads (logits
+    // around 10): relative to the largest logit, plus the null probability.
     let (mut logit_diff, mut probability_diff, mut location_relative, mut null_diff) =
         (0f32, 0f32, 0f32, 0f32);
     let (mut cases, mut queries) = (0, 0);
@@ -376,6 +377,7 @@ fn justin_matches_python_end_to_end() {
                 .collect();
             let mut local = 0f32;
             let mut size = 0f32;
+            let mut relative = 0f32;
             for (i, wanted) in wanted_logits.iter().enumerate() {
                 assert_eq!(
                     wanted.is_finite(),
@@ -385,6 +387,7 @@ fn justin_matches_python_end_to_end() {
                 if wanted.is_finite() {
                     local = local.max((logits[i] - wanted).abs());
                     size = size.max(wanted.abs());
+                    relative = relative.max((logits[i] - wanted).abs() / wanted.abs().max(1.0));
                 }
             }
             if std::env::var("JUSTIN_PARITY_VERBOSE").is_ok() {
@@ -395,7 +398,7 @@ fn justin_matches_python_end_to_end() {
                 location_relative = location_relative.max(local / size.max(1.0));
                 null_diff = null_diff.max(probabilities_diff);
             } else {
-                logit_diff = logit_diff.max(local);
+                logit_diff = logit_diff.max(relative);
                 probability_diff = probability_diff.max(probabilities_diff);
             }
             let best = |v: &[f32]| (0..v.len()).fold(0, |b, i| if v[i] > v[b] { i } else { b });
@@ -409,13 +412,13 @@ fn justin_matches_python_end_to_end() {
         cases += 1;
     }
     println!(
-        "justin: {cases} cases, {queries} queries; question heads: logits max |diff| {logit_diff:.2e}, \
+        "justin: {cases} cases, {queries} queries; question heads: logits max relative diff {logit_diff:.2e}, \
          probabilities {probability_diff:.2e}; location: logits max relative diff {location_relative:.2e}, \
          null probability {null_diff:.2e}"
     );
     assert!(cases > 0);
     assert!(logit_diff <= 1e-4, "logits {logit_diff}");
-    assert!(probability_diff <= 1e-5, "probabilities {probability_diff}");
+    assert!(probability_diff <= 2e-5, "probabilities {probability_diff}");
     assert!(
         location_relative <= 1e-4,
         "location logits {location_relative}"

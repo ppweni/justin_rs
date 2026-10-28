@@ -271,6 +271,17 @@ pub fn deviation_features(z: &[Vec<f64>], step: f64) -> Vec<[f32; N_FEATURES]> {
         .collect()
 }
 
+/// Which channels the question quotes (its first two quoted names, as the referents read them).
+pub fn quoted_channels(question: &str, names: &[String]) -> Vec<bool> {
+    let mut quoted = vec![false; names.len()];
+    for capture in QUOTED.captures_iter(question).take(2) {
+        for index in resolve(&capture[1], names) {
+            quoted[index] = true;
+        }
+    }
+    quoted
+}
+
 /// `referents.resolve`: an exact channel name, else every channel of a service prefix.
 fn resolve(text: &str, names: &[String]) -> Vec<usize> {
     let text = text.trim();

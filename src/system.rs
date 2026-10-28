@@ -5,6 +5,7 @@ use candle_core::{D, Tensor};
 use serde::Deserialize;
 
 use crate::error::{Result, format_error, input_error};
+use crate::kinds::KindSummary;
 use crate::nn::{Encoder, LayerNorm, Linear, Mlp, MultiheadAttention, gelu, masked_mean};
 use crate::weights::Weights;
 
@@ -31,6 +32,9 @@ pub struct ModelConfig {
     pub channel_head: bool,
     #[serde(default)]
     pub referents: bool,
+    /// Learned metric kinds (`kind_summary`); 0 when the model has none.
+    #[serde(default)]
+    pub kind_summary: usize,
     pub series_encoder: String,
     pub text_encoder: String,
     #[serde(default)]
@@ -331,6 +335,8 @@ pub struct Extras<'a> {
     pub channel_features: Option<&'a Tensor>,
     /// ([B, QUESTION], [B, n, OPTION] when the question has options)
     pub referents: Option<(&'a Tensor, Option<&'a Tensor>)>,
+    /// [B, hidden] from `System::kind_summary` (None without channel names)
+    pub kinds: Option<&'a Tensor>,
 }
 
 /// The trained part of SystemOne.
@@ -344,6 +350,7 @@ pub struct System {
     channel_head: Option<ChannelHead>,
     channel_options: Option<OptionAttention>,
     referents: Option<Referents>,
+    pub kind_summary: Option<KindSummary>,
     option_attention: Option<OptionAttention>,
     classes: Option<Tensor>,
     noul: Linear,
@@ -393,6 +400,11 @@ impl System {
                     norm: LayerNorm::load(weights, "referent_norm", 1e-5)?,
                     score: Linear::load(weights, "referent_score", true)?,
                 })
+            } else {
+                None
+            },
+            kind_summary: if config.kind_summary > 0 {
+                Some(KindSummary::load(weights)?)
             } else {
                 None
             },
@@ -520,6 +532,12 @@ impl System {
         if let (Some(referents), Some((question_features, _))) = (&self.referents, extras.referents)
         {
             fused = (fused + referents.question.forward(question_features)?)?;
+        }
+        if let Some(kinds) = extras.kinds {
+            if self.kind_summary.is_none() {
+                return Err(input_error("this model was built without kind_summary"));
+            }
+            fused = (fused + kinds)?;
         }
         match head {
             Head::YesNo => {
